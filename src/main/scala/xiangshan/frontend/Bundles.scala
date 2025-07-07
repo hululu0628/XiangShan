@@ -19,7 +19,6 @@ package xiangshan.frontend
 import chisel3._
 import chisel3.util._
 import ftq.BpuFlushInfo
-import ftq.FtqEntry
 import ftq.FtqPtr
 import ftq.FtqRedirectSramEntry
 import org.chipsalliance.cde.config.Parameters
@@ -53,7 +52,7 @@ class BpuToFtqIO(implicit p: Parameters) extends XSBundle {
   // TODO: topdown, etc.
 }
 
-class FetchRequestBundle(implicit p: Parameters) extends XSBundle with HasICacheParameters {
+class FetchRequestBundle(implicit p: Parameters) extends FrontendBundle with HasICacheParameters {
 
   // fast path: Timing critical
   val startVAddr:         PrunedAddr = PrunedAddr(VAddrBits)
@@ -61,7 +60,7 @@ class FetchRequestBundle(implicit p: Parameters) extends XSBundle with HasICache
   val nextStartVAddr:     PrunedAddr = PrunedAddr(VAddrBits)
   // slow path
   val ftqIdx    = new FtqPtr
-  val ftqOffset = ValidUndirectioned(UInt(log2Ceil(PredictWidth).W))
+  val ftqOffset = Valid(UInt(FetchBlockOffsetBits.W))
 
   val topdownInfo = new FrontendTopDownBundle
 

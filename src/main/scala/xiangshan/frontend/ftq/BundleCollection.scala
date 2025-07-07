@@ -19,100 +19,19 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import utility.HasCircularQueuePtrHelper
-import utility.ParallelPriorityEncoder
-import utility.ParallelPriorityMux
-import xiangshan.ValidUndirectioned
-import xiangshan.XSBundle
-import xiangshan.XSCoreParamsKey
-import xiangshan.frontend.BranchPredictionBundle
 import xiangshan.frontend.BranchPredictionRedirect
 import xiangshan.frontend.BranchPredictionUpdate
 import xiangshan.frontend.CGHPtr
-import xiangshan.frontend.PreDecodeInfo
-import xiangshan.frontend.PredecodeWritebackBundle
 import xiangshan.frontend.PrunedAddr
 import xiangshan.frontend.RasSpeculativeInfo
-import xiangshan.frontend.bpu.BPUUtils
 import xiangshan.frontend.bpu.FTBEntry
-import xiangshan.frontend.bpu.FullBranchPrediction
 import xiangshan.frontend.bpu.HasBPUConst
 import xiangshan.frontend.bpu.NewPredictorMeta
 import xiangshan.frontend.bpu.PredictorMeta
 import xiangshan.frontend.bpu.abtb.AheadBtbUpdate
 
-class FtqDebugBundle(implicit p: Parameters) extends FtqBundle {
-  val pc        = PrunedAddr(VAddrBits)
-  val target    = PrunedAddr(VAddrBits)
-  val isBr      = Bool()
-  val isJmp     = Bool()
-  val isCall    = Bool()
-  val isRet     = Bool()
-  val misPred   = Bool()
-  val isTaken   = Bool()
-  val predStage = UInt(2.W)
-}
-
-class FtqEntry(implicit p: Parameters) extends FtqBundle with BPUUtils {
-  val startAddr     = PrunedAddr(VAddrBits)
-  val nextLineAddr  = PrunedAddr(VAddrBits)
-  val fallThruError = Bool()
-
-  def :=(pred: FullBranchPrediction): Unit = {
-    this.startAddr     := pred.startVAddr
-    this.nextLineAddr  := pred.startVAddr + (FetchWidth * 4 * 2).U // may be broken on other configs
-    this.fallThruError := false.B                                  // FIXME
-  }
-
-  override def toPrintable: Printable =
-    p"startAddr:${Hexadecimal(startAddr.toUInt)}"
-}
-
-class FtqPdEntry(implicit p: Parameters) extends FtqBundle {
-  val brMask    = Vec(PredictWidth, Bool())
-  val jmpInfo   = ValidUndirectioned(Vec(3, Bool()))
-  val jmpOffset = UInt(log2Ceil(PredictWidth).W)
-  val jalTarget = PrunedAddr(VAddrBits)
-  val rvcMask   = Vec(PredictWidth, Bool())
-  def hasJal    = jmpInfo.valid && !jmpInfo.bits(0)
-  def hasJalr   = jmpInfo.valid && jmpInfo.bits(0)
-  def hasCall   = jmpInfo.valid && jmpInfo.bits(1)
-  def hasRet    = jmpInfo.valid && jmpInfo.bits(2)
-
-  def fromPdWb(pdWb: PredecodeWritebackBundle) = {
-    val pds = pdWb.pd
-    this.brMask        := VecInit(pds.map(pd => pd.isBr && pd.valid))
-    this.jmpInfo.valid := VecInit(pds.map(pd => (pd.isJal || pd.isJalr) && pd.valid)).asUInt.orR
-    this.jmpInfo.bits := ParallelPriorityMux(
-      pds.map(pd => (pd.isJal || pd.isJalr) && pd.valid),
-      pds.map(pd => VecInit(pd.isJalr, pd.isCall, pd.isRet))
-    )
-    this.jmpOffset := ParallelPriorityEncoder(pds.map(pd => (pd.isJal || pd.isJalr) && pd.valid))
-    this.rvcMask   := VecInit(pds.map(pd => pd.isRVC))
-    this.jalTarget := pdWb.jalTarget
-  }
-
-  def toPd(offset: UInt) = {
-    require(offset.getWidth == log2Ceil(PredictWidth))
-    val pd = Wire(new PreDecodeInfo)
-    pd.valid := true.B
-    pd.isRVC := rvcMask(offset)
-    val isBr   = brMask(offset)
-    val isJalr = offset === jmpOffset && jmpInfo.valid && jmpInfo.bits(0)
-    pd.brType := Cat(offset === jmpOffset && jmpInfo.valid, isJalr || isBr)
-    pd.isCall := offset === jmpOffset && jmpInfo.valid && jmpInfo.bits(1)
-    pd.isRet  := offset === jmpOffset && jmpInfo.valid && jmpInfo.bits(2)
-    pd
-  }
-}
-
-class PrefetchPtrDb(implicit p: Parameters) extends Bundle {
-  val fromFtqPtr = UInt(log2Up(p(XSCoreParamsKey).FtqSize).W)
-  val fromIfuPtr = UInt(log2Up(p(XSCoreParamsKey).FtqSize).W)
-}
-
-class FtqRedirectSramEntry(implicit p: Parameters) extends XSBundle {
+class FtqRedirectSramEntry(implicit p: Parameters) extends FtqBundle {
   val histPtr = new CGHPtr
-//  val sc_disagree = if (!env.FPGAPlatform) Some(Vec(numBr, Bool())) else None
   val rasSpecInfo = new RasSpeculativeInfo
 }
 
@@ -121,11 +40,6 @@ class Ftq_1R_SRAMEntry(implicit p: Parameters) extends FtqBundle with HasBPUCons
   val newMeta    = new NewPredictorMeta
   val ftb_entry  = new FTBEntry
   val paddingBit = if ((meta.getWidth + newMeta.getWidth + ftb_entry.getWidth) % 2 != 0) Some(UInt(1.W)) else None
-}
-
-class Ftq_Pred_Info(implicit p: Parameters) extends FtqBundle {
-  val target   = PrunedAddr(VAddrBits)
-  val cfiIndex = ValidUndirectioned(UInt(log2Ceil(PredictWidth).W))
 }
 
 class FtqRead[T <: Data](private val gen: T)(implicit p: Parameters) extends FtqBundle {
@@ -173,7 +87,7 @@ class FtqToCtrlIO(implicit p: Parameters) extends FtqBundle {
   // write to backend pc mem
   val pc_mem_wen   = Output(Bool())
   val pc_mem_waddr = Output(UInt(log2Ceil(FtqSize).W))
-  val pc_mem_wdata = Output(new FtqEntry)
+  val pc_mem_wdata = Output(PrunedAddr(VAddrBits))
   // newest target
   val newest_entry_en     = Output(Bool())
   val newest_entry_target = Output(UInt(VAddrBits.W))

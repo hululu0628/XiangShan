@@ -34,6 +34,7 @@ case class FrontendParameters(
 trait HasFrontendParameters extends HasXSParameter {
   def frontendParameters: FrontendParameters = coreParams.frontendParameters
 
-  def FetchBlockSize:    Int = frontendParameters.FetchBlockSize
-  def FetchBlockInstNum: Int = FetchBlockSize / instBytes
+  def FetchBlockSize:       Int = frontendParameters.FetchBlockSize
+  def FetchBlockInstNum:    Int = FetchBlockSize / instBytes
+  def FetchBlockOffsetBits: Int = log2Ceil(FetchBlockSize)
 }
