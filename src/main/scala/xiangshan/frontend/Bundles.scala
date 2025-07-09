@@ -60,7 +60,7 @@ class FetchRequestBundle(implicit p: Parameters) extends FrontendBundle with Has
   val nextStartVAddr:     PrunedAddr = PrunedAddr(VAddrBits)
   // slow path
   val ftqIdx    = new FtqPtr
-  val ftqOffset = Valid(UInt(FetchBlockOffsetBits.W))
+  val ftqOffset = Valid(UInt(CfiPositionWidth.W))
 
   val topdownInfo = new FrontendTopDownBundle
 

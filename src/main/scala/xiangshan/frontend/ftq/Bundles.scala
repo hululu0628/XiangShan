@@ -31,11 +31,11 @@ import xiangshan.frontend.bpu.PredictorMeta
 import xiangshan.frontend.bpu.abtb.AheadBtbUpdate
 
 class FtqRedirectSramEntry(implicit p: Parameters) extends FtqBundle {
-  val histPtr = new CGHPtr
+  val histPtr     = new CGHPtr
   val rasSpecInfo = new RasSpeculativeInfo
 }
 
-class Ftq_1R_SRAMEntry(implicit p: Parameters) extends FtqBundle with HasBPUConst {
+class MetaEntry(implicit p: Parameters) extends FtqBundle with HasBPUConst {
   val meta       = new PredictorMeta
   val newMeta    = new NewPredictorMeta
   val ftb_entry  = new FTBEntry
@@ -56,11 +56,11 @@ class FtqRead[T <: Data](private val gen: T)(implicit p: Parameters) extends Ftq
 }
 
 class FtqToBpuIO(implicit p: Parameters) extends FtqBundle {
-  val redirect       = Valid(new BranchPredictionRedirect)
-  val update         = Valid(new BranchPredictionUpdate)
-  val newUpdate      = Valid(new AheadBtbUpdate) // FIXME
-  val enq_ptr        = Output(new FtqPtr)
-  val redirctFromIFU = Output(Bool())
+  val redirect:        Valid[BranchPredictionRedirect] = Valid(new BranchPredictionRedirect)
+  val update:          Valid[BranchPredictionUpdate]   = Valid(new BranchPredictionUpdate)
+  val newUpdate:       Valid[AheadBtbUpdate]           = Valid(new AheadBtbUpdate) // FIXME
+  val bpuPtr:          FtqPtr                          = Output(new FtqPtr)
+  val redirectFromIFU: Bool                            = Output(Bool())
 }
 
 class BpuFlushInfo(implicit p: Parameters) extends FtqBundle with HasCircularQueuePtrHelper {

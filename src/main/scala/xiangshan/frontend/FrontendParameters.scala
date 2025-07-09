@@ -36,5 +36,5 @@ trait HasFrontendParameters extends HasXSParameter {
 
   def FetchBlockSize:       Int = frontendParameters.FetchBlockSize
   def FetchBlockInstNum:    Int = FetchBlockSize / instBytes
-  def FetchBlockOffsetBits: Int = log2Ceil(FetchBlockSize)
+  def CfiPositionWidth:     Int = log2Ceil(FetchBlockInstNum) // 2/4B(inst) aligned
 }

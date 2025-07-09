@@ -25,7 +25,7 @@ class CfiQueue(implicit p: Parameters) extends FtqModule {
   class CfiQueueIO extends FtqBundle {
     class ReadChannel extends FtqBundle {
       val ptr:   FtqPtr      = Input(new FtqPtr())
-      val rdata: Valid[UInt] = Output(Valid(UInt(FetchBlockOffsetBits.W)))
+      val rdata: Valid[UInt] = Output(Valid(UInt(CfiPositionWidth.W)))
     }
 
     val ifuPtr:    Vec[ReadChannel] = Vec(1, new ReadChannel)
@@ -33,7 +33,7 @@ class CfiQueue(implicit p: Parameters) extends FtqModule {
 
     val wen:   Bool        = Input(Bool())
     val waddr: UInt        = Input(UInt(log2Ceil(FtqSize).W))
-    val wdata: Valid[UInt] = Input(Valid(UInt(FetchBlockOffsetBits.W)))
+    val wdata: Valid[UInt] = Input(Valid(UInt(CfiPositionWidth.W)))
   }
 
   val io: CfiQueueIO = IO(new CfiQueueIO)
@@ -45,7 +45,7 @@ class CfiQueue(implicit p: Parameters) extends FtqModule {
   private val readChannelNum = readChannels.size
 
   private val mem = Module(new SyncDataModuleTemplate(
-    gen = Valid(UInt(FetchBlockOffsetBits.W)),
+    gen = Valid(UInt(CfiPositionWidth.W)),
     numEntries = FtqSize,
     numRead = readChannelNum,
     numWrite = 1

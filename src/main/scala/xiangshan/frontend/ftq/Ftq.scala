@@ -92,6 +92,7 @@ class Ftq(implicit p: Parameters) extends FtqModule
   private val entryQueue = Module(new EntryQueue)
 
   // cfiQueue stores positions of control flow instructions in each request entry.
+  // FIXME: Do we need cfiQueue when backend sends instruction information with commit?
   private val cfiQueue = Module(new CfiQueue)
 
   // metaQueue stores information needed to train BPU.
@@ -140,7 +141,7 @@ class Ftq(implicit p: Parameters) extends FtqModule
   private val bpuS2Redirect = fromBpu.bits.s2Override.valid && fromBpu.valid
   private val bpuS3Redirect = fromBpu.bits.s3Override.valid && fromBpu.valid
 
-  io.toBpu.enq_ptr := bpuPtr(0)
+  io.toBpu.bpuPtr := bpuPtr(0)
   private val bpuEnqueue = io.fromBpu.resp.fire && !redirect.valid
 
   private val fromBpuPtr = MuxCase(
@@ -162,6 +163,10 @@ class Ftq(implicit p: Parameters) extends FtqModule
   entryQueue.io.wen   := (fromBpu.fire || bpuS2Redirect || bpuS3Redirect) && !redirect.valid
   entryQueue.io.waddr := fromBpuPtr.value
   entryQueue.io.wdata := fromBpu.bits.startVAddr
+
+  cfiQueue.io.wen   := (fromBpu.fire || bpuS2Redirect || bpuS3Redirect) && !redirect.valid
+  cfiQueue.io.waddr := fromBpuPtr.value
+  cfiQueue.io.wdata := fromBpu.bits.cfiPosition
 
   metaQueue.io.wen             := io.fromBpu.meta.valid
   metaQueue.io.waddr           := io.fromBpu.resp.bits.s3Override.bits.ftqPtr.value
@@ -204,6 +209,8 @@ class Ftq(implicit p: Parameters) extends FtqModule
 
   entryQueue.io.pfPtr.zipWithIndex.foreach { case (ptr, offset) => ptr.ptr := pfPtr(offset) }
   entryQueue.io.ifuPtr.zipWithIndex.foreach { case (ptr, offset) => ptr.ptr := ifuPtr(offset) }
+
+  cfiQueue.io.ifuPtr.zipWithIndex.foreach { case (ptr, offset) => ptr.ptr := ifuPtr(offset) }
 
   // FIXME:backend redirect delay should be more than ITLB csr delay
   io.toICache.prefetchReq.valid := (bpuPtr(0) > pfPtr(0) || redirectNext.valid) && !redirect.valid
@@ -292,8 +299,8 @@ class Ftq(implicit p: Parameters) extends FtqModule
 
   io.toBpu.redirect.valid := redirect.valid
   // FIXME: Modify BPU
-  io.toBpu.redirect.bits  := DontCare
-  io.toBpu.redirctFromIFU := ifuRedirect.valid
+  io.toBpu.redirect.bits   := DontCare
+  io.toBpu.redirectFromIFU := ifuRedirect.valid
 
   // --------------------------------------------------------------------------------
   // Commit and train BPU
@@ -313,13 +320,23 @@ class Ftq(implicit p: Parameters) extends FtqModule
       io.fromBackend.rob_commits.map(_.bits.ftqIdx).reverse
     )
   }
-  private val robCommitPtrReg: FtqPtr = RegEnable(robCommitPtr, FtqPtr(false.B, 0.U) - 1.U, backendCommit)
+  private val robCommitPtrReg: FtqPtr = RegEnable(robCommitPtr, FtqPtr(true.B, (FtqSize - 1).U), backendCommit)
   private val committedPtr = Mux(backendCommit, robCommitPtr, robCommitPtrReg)
   canCommit     := commitPtr < committedPtr
   readyToCommit := canCommit && shouldCommit(commitPtr(0).value)
   when(canCommit) {
     commitPtr := commitPtr + 1.U
   }
+
+  entryQueue.io.commitPtr.zipWithIndex.foreach { case (ptr, offset) => ptr.ptr := commitPtr(offset) }
+  cfiQueue.io.commitPtr.zipWithIndex.foreach { case (ptr, offset) => ptr.ptr := commitPtr(offset) }
+
+  // TODO: Wrap metaQueue as other queues
+  metaQueue.io.ren   := readyToCommit
+  metaQueue.io.raddr := commitPtr(0).value
+
+  io.toBpu.update    := DontCare
+  io.toBpu.newUpdate := DontCare
 
   // --------------------------------------------------------------------------------
   // MMIO fetch
